@@ -21,6 +21,7 @@ egui = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 chrono = { workspace = true }
+url = "2"
 
 [build-dependencies]
 winresource = "0.1"
@@ -48,6 +49,8 @@ hidapi = { version = "2.6.7", default-features = false, features = ["windows-nat
 # View ▸ Accessibility ▸ Animation Effects ▸ Use System Setting: Windows' Animation effects
 # setting (system_animations.rs). Already in Cargo.lock through wgpu's DirectX 12 backend.
 windows = { version = "0.62", features = ["UI_ViewManagement"] }
+# Isolated desktop browser host; no WebView dependencies enter the engine or WASM UI.
+wry = { version = "=0.57.1", default-features = false, features = ["os-webview"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev"] }

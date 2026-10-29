@@ -297,6 +297,106 @@ fn visible_tabs(widths: &[f32], active: Option<usize>, room: f32) -> std::ops::R
     start..active + 1
 }
 
+/// The drafting toggles shared by the status bar and the project sidebar: icon, current state,
+/// the command a click runs, and the tooltip key.
+fn drafting_toggles(app: &CadApp) -> Vec<(Icon, bool, &'static str, &'static str)> {
+    let s = &app.session.settings;
+    let anno_all = app.session.doc().is_ok_and(|d| d.anno_all_visible());
+    use cadcraft_engine::snap::mode;
+    vec![
+        (Icon::Grid, s.gridmode, "grid", "Grid (F7)"),
+        (Icon::Snap, s.snapmode, "snap", "Snap Mode (F9)"),
+        (Icon::Ortho, s.orthomode, "ortho", "Ortho Mode (F8)"),
+        (Icon::Polar, s.polarmode, "polar", "Polar Tracking (F10)"),
+        (Icon::Isodraft, s.isodraft, "isodraft", "Isometric Drafting"),
+        (Icon::OTrack, s.otrack, "otrack", "Object Snap Tracking (F11)"),
+        (Icon::Osnap, s.osmode & mode::OFF == 0 && s.osmode != 0, "osnap", "Object Snap (F3)"),
+        (Icon::Lineweight, s.lwdisplay, "lwdisplay", "Show/Hide Lineweight"),
+        (Icon::Transparency, s.transparency_display, "transparencydisplay", "Show/Hide Transparency"),
+        (Icon::DynInput, s.dynmode, "dynmode", "Dynamic Input (F12)"),
+        (Icon::QuickProps, s.qpmode, "qpmode", "Quick Properties"),
+        (Icon::Annotation, anno_all, "annovisible.toggle", "Annotation Visibility"),
+        (Icon::Workspace, false, "ui.noop", "Workspace Switching"),
+        (Icon::Gear, false, "ui.dialog.dsettings", "Drafting Settings"),
+    ]
+}
+
+/// One drafting toggle at `br`: the shared fill, icon, on-underline and tooltip; returns the
+/// command when clicked.
+fn toggle_at(
+    ui: &mut egui::Ui,
+    p: &egui::Painter,
+    br: Rect,
+    resp: egui::Response,
+    icon: Icon,
+    on: bool,
+    cmd: &'static str,
+    tip: &'static str,
+) -> Option<&'static str> {
+    let t = Tokens::get();
+    if on {
+        p.rect_filled(br, 3.0, t.toggle_on.gamma_multiply(0.35));
+    } else if resp.hovered() {
+        p.rect_filled(br, 3.0, t.control_hover.gamma_multiply(0.5));
+    }
+    icons::paint(p, br.shrink(2.5), icon, false);
+    if on {
+        p.hline(br.x_range().shrink(4.0), br.bottom() - 1.0, Stroke::new(1.5, t.toggle_on));
+    }
+    icons::describe_control(ui, &resp, tip, Some(on), false);
+    resp.on_hover_text(crate::i18n::t(tip)).clicked().then_some(cmd)
+}
+
+/// Run a clicked drafting toggle without cancelling the active command (#1108); the dialog
+/// buttons start theirs.
+fn run_toggle(app: &mut CadApp, cmd: Option<&'static str>) {
+    match cmd {
+        Some(c) if c.starts_with("ui.") => app.start(c),
+        Some(c) => crate::menus::run_transparent(app, c),
+        None => {}
+    }
+}
+
+/// Compact status area for the project sidebar: the transient message or cursor coordinates on
+/// one line, the drafting toggles wrapped below. Runs the same commands as [`status_bar`], which
+/// it replaces while the project layout owns the chrome.
+pub fn sidebar_status(app: &mut CadApp, ui: &mut egui::Ui) {
+    let t = Tokens::get();
+    // Clear the status message on time even when no input arrives (the app only repaints on input).
+    if let Some((_, at)) = &app.status
+        && crate::now_ms() - at < 5000.0
+    {
+        let left = std::time::Duration::try_from_secs_f64((5000.0 - (crate::now_ms() - at)) / 1000.0).unwrap_or_default();
+        ui.ctx().request_repaint_after(left);
+    }
+    let message = app.status.as_ref().filter(|(_, at)| crate::now_ms() - at < 5000.0).map(|(m, _)| m.clone());
+    let coord = app.canvas.cursor.map(|c| {
+        let (lu, lp) = app.session.doc().map(|d| (d.header.i64("LUNITS", 2), d.header.i64("LUPREC", 4))).unwrap_or((2, 4));
+        format!(
+            "{}, {}, {}",
+            cadcraft_engine::units::format_distance(c.x, lu, lp),
+            cadcraft_engine::units::format_distance(c.y, lu, lp),
+            cadcraft_engine::units::format_distance(0.0, lu, lp)
+        )
+    });
+    if let Some(text) = message.clone().or(coord) {
+        let color = if message.is_some() { t.warn } else { t.text };
+        ui.add(egui::Label::new(egui::RichText::new(&text).color(color)).truncate()).on_hover_text(text);
+    }
+    let mut toggle_cmd = None;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+        let p = ui.painter().clone();
+        for (icon, on, cmd, tip) in drafting_toggles(app) {
+            let (br, resp) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
+            if let Some(c) = toggle_at(ui, &p, br, resp, icon, on, cmd, tip) {
+                toggle_cmd = Some(c);
+            }
+        }
+    });
+    run_toggle(app, toggle_cmd);
+}
+
 /// Status bar: layout tabs on the left, coordinates and drafting toggles on the right.
 pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
     let t = Tokens::get();
@@ -329,25 +429,7 @@ pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
         }
         x = x.max(r.left() + if app.ui.show_toolsets { 232.0 } else { 60.0 });
         // Right side: toggles, right-aligned.
-        let s = app.session.settings.clone();
-        let anno_all = app.session.doc().is_ok_and(|d| d.anno_all_visible());
-        use cadcraft_engine::snap::mode;
-        let toggles: Vec<(Icon, bool, &str, &str)> = vec![
-            (Icon::Grid, s.gridmode, "grid", "Grid (F7)"),
-            (Icon::Snap, s.snapmode, "snap", "Snap Mode (F9)"),
-            (Icon::Ortho, s.orthomode, "ortho", "Ortho Mode (F8)"),
-            (Icon::Polar, s.polarmode, "polar", "Polar Tracking (F10)"),
-            (Icon::Isodraft, s.isodraft, "isodraft", "Isometric Drafting"),
-            (Icon::OTrack, s.otrack, "otrack", "Object Snap Tracking (F11)"),
-            (Icon::Osnap, s.osmode & mode::OFF == 0 && s.osmode != 0, "osnap", "Object Snap (F3)"),
-            (Icon::Lineweight, s.lwdisplay, "lwdisplay", "Show/Hide Lineweight"),
-            (Icon::Transparency, s.transparency_display, "transparencydisplay", "Show/Hide Transparency"),
-            (Icon::DynInput, s.dynmode, "dynmode", "Dynamic Input (F12)"),
-            (Icon::QuickProps, s.qpmode, "qpmode", "Quick Properties"),
-            (Icon::Annotation, anno_all, "annovisible.toggle", "Annotation Visibility"),
-            (Icon::Workspace, false, "ui.noop", "Workspace Switching"),
-            (Icon::Gear, false, "ui.dialog.dsettings", "Drafting Settings"),
-        ];
+        let toggles = drafting_toggles(app);
         let size = 20.0;
         let mut rx = r.right() - 8.0 - toggles.len() as f32 * (size + 4.0);
         // Coordinates.
@@ -496,28 +578,12 @@ pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
         for (icon, on, cmd, tip) in toggles {
             let br = Rect::from_min_size(pos2(rx, r.center().y - size / 2.0), vec2(size, size));
             let resp = ui.interact(br, ui.id().with(("tg", tip)), Sense::click());
-            if on {
-                p.rect_filled(br, 3.0, t.toggle_on.gamma_multiply(0.35));
-            } else if resp.hovered() {
-                p.rect_filled(br, 3.0, t.control_hover.gamma_multiply(0.5));
-            }
-            icons::paint(&p, br.shrink(2.5), icon, false);
-            if on {
-                // Re-tint the icon blue-ish by an underline.
-                p.hline(br.x_range().shrink(4.0), br.bottom() - 1.0, Stroke::new(1.5, t.toggle_on));
-            }
-            icons::describe_control(ui, &resp, tip, Some(on), false);
-            if resp.on_hover_text(crate::i18n::t(tip)).clicked() {
-                toggle_cmd = Some(cmd);
+            if let Some(c) = toggle_at(ui, &p, br, resp, icon, on, cmd, tip) {
+                toggle_cmd = Some(c);
             }
             rx += size + 4.0;
         }
-        // The toggles don't cancel the active command (#1108); the dialog buttons start theirs.
-        match toggle_cmd {
-            Some(c) if c.starts_with("ui.") => app.start(c),
-            Some(c) => crate::menus::run_transparent(app, c),
-            None => {}
-        }
+        run_toggle(app, toggle_cmd);
     });
 }
 

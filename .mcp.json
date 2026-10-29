@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "cadcraft": {
+      "type": "stdio",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--release",
+        "-p",
+        "cadcraft-cli",
+        "--",
+        "mcp",
+        "--connect",
+        "127.0.0.1:7979",
+        "--lazy"
+      ]
+    }
+  }
+}

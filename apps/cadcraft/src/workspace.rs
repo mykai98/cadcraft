@@ -87,7 +87,7 @@ fn read(path: &Path) -> Result<Option<UiState>, String> {
         && let Ok(docking) = serde_json::from_value::<cadcraft_ui_egui::docking::Workspace>(docking)
         && cadcraft_ui_egui::docking::validate(&docking).is_ok()
     {
-        ui.docking = docking;
+        ui.docking = if docking == cadcraft_ui_egui::docking::legacy_workspace() { cadcraft_ui_egui::docking::default_workspace() } else { docking };
     }
     // Old or hand-edited files cannot reopen a dialog or replace the active drawing view.
     ui.dialog = None;
@@ -180,6 +180,19 @@ mod tests {
         let path = std::env::temp_dir().join(format!("cadcraft-workspace-test-{}-{sequence}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn legacy_default_migrates_but_customized_layout_is_preserved() {
+        let directory = temp_dir();
+        let path = directory.join("workspace.json");
+        let mut ui = UiState { docking: cadcraft_ui_egui::docking::legacy_workspace(), ..UiState::default() };
+        write(&path, &snapshot(&ui).unwrap()).unwrap();
+        assert_eq!(read(&path).unwrap().unwrap().docking, cadcraft_ui_egui::docking::default_workspace());
+        ui.docking.set_visible(cadcraft_ui_egui::docking::Panel::Layers, false, None, cadcraft_ui_egui::docking::permissions).unwrap();
+        write(&path, &snapshot(&ui).unwrap()).unwrap();
+        assert_eq!(read(&path).unwrap().unwrap().docking, ui.docking);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -133,7 +133,7 @@ fn docking_renders_default_float_and_redocked_at_normal_and_narrow_sizes() {
 #[test]
 fn automation_reaches_split_stack_resize_and_tab_reorder_through_the_same_handler() {
     use craft_ui::{docking::Action, layout::SplitSize};
-    let mut h = harness(None, 1280.0, 1.0);
+    let mut h = harness(Some(UiState { docking: cadcraft_ui_egui::docking::legacy_workspace(), ..UiState::default() }), 1280.0, 1.0);
     h.state_mut()
         .run(
             "ui.dock",
@@ -152,7 +152,7 @@ fn automation_reaches_split_stack_resize_and_tab_reorder_through_the_same_handle
 
 #[test]
 fn stack_boundary_resizes_by_pointer_and_keyboard_without_changing_the_drawing() {
-    let mut h = harness(None, 1280.0, 1.0);
+    let mut h = harness(Some(UiState { docking: cadcraft_ui_egui::docking::legacy_workspace(), ..UiState::default() }), 1280.0, 1.0);
     let drawing = h.state().session.doc().unwrap().clone();
     let center = h
         .get_all_by_role_and_label(egui::accesskit::Role::Splitter, "Resize panels")
@@ -284,7 +284,9 @@ fn properties_typed_in_rendered_command_line_reopens_and_selects_actual_workspac
     assert_eq!(restored_tools.size, tools.size);
     assert_eq!(restored_tools.floating, tools.floating);
     assert_eq!(restored_tools.stack, tools.stack);
-    assert!(restored_tools.sibling.contains(&Panel::Properties));
+    let layout = serde_json::to_value(&h.state().ui.docking.layout).unwrap();
+    let panels = layout["root"]["Split"]["second"]["Tabs"]["panels"].as_array().unwrap();
+    assert!(panels.contains(&json!("toolSets")) && panels.contains(&json!("properties")));
 
     h.state_mut().run("ui.dock", json!({"operation":"float","panel":"layers","rect":[400,250,300,350]})).unwrap();
     h.state_mut().run("ui.dock", json!({"operation":"move","panel":"properties","target":"layers","zone":"center"})).unwrap();
@@ -410,7 +412,7 @@ fn group_drag_bar_moves_the_whole_group_beside_the_drawing() {
     while let Some(node) = nodes.pop() {
         if let Node::Split { first, second, .. } = node {
             beside |= matches!((&**first, &**second), (Node::Tabs { panels: left, .. }, Node::Tabs { panels: right, .. })
-                if left == &[Panel::Canvas] && right == &[Panel::ToolSets, Panel::Layers]);
+                if left == &[Panel::Canvas] && right == &[Panel::ToolSets, Panel::Properties, Panel::Layers]);
             nodes.push(first);
             nodes.push(second);
         }

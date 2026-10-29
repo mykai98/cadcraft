@@ -169,7 +169,7 @@ pub fn toolsets(app: &mut CadApp, ui: &mut egui::Ui) {
         p.rect_filled(Rect::from_min_max(pos2(x, r.top()), pos2(r.right(), r.top() + tab_h)), 0.0, t.chrome);
         let cr = Rect::from_center_size(pos2(r.right() - 14.0, r.top() + tab_h / 2.0), vec2(14.0, 14.0));
         let cresp = ui.interact(cr, ui.id().with("ts_collapse"), Sense::click());
-        icons::paint(&p, cr, Icon::ChevronLeft, false);
+        icons::paint(&p, cr, Icon::ChevronRight, false);
         icons::describe_control(ui, &cresp, "Collapse Tool Sets", None, false);
         if cresp.on_hover_text(crate::tl!("Collapse Tool Sets")).clicked() {
             app.ui.show_toolsets = false;
@@ -323,14 +323,14 @@ fn swatch(p: &egui::Painter, r: Rect, c: Color) {
     p.rect_stroke(r, 1.0, Stroke::new(1.0, Color32::from_gray(30)), egui::StrokeKind::Inside);
 }
 
-/// The strip collapsed Tool Sets leave on the left edge, like a collapsed palette title bar:
+/// The strip collapsed Tool Sets leave on the right edge, like a collapsed palette title bar:
 /// without it the only way back was Window > Tool Sets (#1095). The whole strip expands them.
 pub fn toolsets_strip(app: &mut CadApp, ui: &mut egui::Ui) {
     let t = Tokens::get();
-    egui::Panel::left("cc_toolsets_strip").exact_size(22.0).resizable(false).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+    egui::Panel::right("cc_toolsets_strip").exact_size(22.0).resizable(false).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
         let r = ui.max_rect();
         let resp = ui.interact(r, ui.id().with("ts_expand"), Sense::click());
-        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.top() + 14.0), vec2(14.0, 14.0)), Icon::ChevronRight, false);
+        icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.top() + 14.0), vec2(14.0, 14.0)), Icon::ChevronLeft, false);
         icons::describe_control(ui, &resp, "Expand Tool Sets", None, false);
         if resp.on_hover_text(crate::tl!("Tool Sets")).clicked() {
             let _ = app.run("ui.toggle.toolsets", json!({"on": true}));

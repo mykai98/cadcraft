@@ -63,8 +63,21 @@ fn split(axis: SplitAxis, size: SplitSize, first: Node<Panel>, second: Node<Pane
 /// The saved panel arrangement: craft-ui's workspace over CADCraft's panels.
 pub type Workspace = craft_ui::docking::Workspace<Panel>;
 
-/// Tool Sets on the left, the drawing, and the Layers and Properties accordion on the right.
+/// Drawing and a single right-hand toolbox, with tabs for all three palettes.
 pub fn default_workspace() -> Workspace {
+    Workspace::new(Layout {
+        root: Some(split(
+            SplitAxis::Horizontal,
+            SplitSize::FixedSecond(300.0),
+            tabs(Panel::Canvas),
+            Node::Tabs { panels: vec![Panel::ToolSets, Panel::Layers, Panel::Properties], active: 0 },
+        )),
+        floating: Vec::new(),
+    })
+}
+
+/// Kept only to recognize the upstream default when restoring an existing installation.
+pub fn legacy_workspace() -> Workspace {
     Workspace::new(Layout {
         root: Some(split(
             SplitAxis::Horizontal,
@@ -213,6 +226,92 @@ pub fn command(app: &mut crate::CadApp, reset: bool, params: &Value) -> Result<V
     Ok(json!({"docking": app.ui.docking}))
 }
 
+/// Project mode keeps every open palette in one sidebar, including saved floating/stacked palettes.
+/// Keep the workspace representation so commands and persistence still share the same state.
+pub fn show_project(app: &mut crate::CadApp, ui: &mut egui::Ui) {
+    let t = crate::theme::Tokens::get();
+    let mut workspace = app.ui.docking.clone();
+    if let Err(error) = validate(&workspace).and_then(|()| sync(&mut workspace, app)) {
+        app.set_status(format!("Panel layout could not be restored: {error}"));
+        workspace = default_workspace();
+    }
+    let panels: Vec<_> = Panel::ALL.iter().chain(Panel::ON_DEMAND).copied().filter(|p| *p != Panel::Canvas && workspace.layout.contains(p)).collect();
+    let mut active = if let Some(Node::Split { second, .. }) = &workspace.layout.root
+        && let Node::Tabs { panels: old, active } = second.as_ref()
+    {
+        old.get(*active).and_then(|p| panels.iter().position(|v| v == p)).unwrap_or(0)
+    } else {
+        0
+    };
+    workspace.layout.root =
+        Some(split(SplitAxis::Horizontal, SplitSize::FixedSecond(340.0), tabs(Panel::Canvas), Node::Tabs { panels: panels.clone(), active }));
+    if panels.is_empty() {
+        workspace.layout.root = Some(tabs(Panel::Canvas));
+    }
+    workspace.layout.floating.clear();
+    app.ui.docking = workspace;
+    egui::Panel::right("project-toolbox")
+        .default_size(340.0)
+        .size_range(260.0..=480.0)
+        .resizable(true)
+        .frame(egui::Frame::NONE.fill(t.panel).inner_margin(6.0))
+        .show(ui, |ui| {
+            if app.ui.show_status_bar {
+                crate::chrome::sidebar_status(app, ui);
+                ui.separator();
+            }
+            ui.horizontal_wrapped(|ui| {
+                for (index, panel) in panels.iter().enumerate() {
+                    let response = ui.selectable_label(active == index, crate::i18n::t(panel.label()));
+                    crate::icons::describe_control(ui, &response, crate::i18n::t(panel.label()), Some(active == index), true);
+                    if response.clicked() {
+                        active = index;
+                        if let Some(Node::Split { second, .. }) = &mut app.ui.docking.layout.root
+                            && let Node::Tabs { active: selected, .. } = second.as_mut()
+                        {
+                            *selected = active;
+                        }
+                    }
+                }
+                if !app.ui.show_toolsets && ui.button(crate::tl!("Tool Sets")).clicked() {
+                    app.ui.show_toolsets = true;
+                }
+                if !app.ui.show_palettes && ui.button(crate::tl!("Properties")).clicked() {
+                    app.ui.show_palettes = true;
+                }
+            });
+            ui.separator();
+            if let Some(panel) = panels.get(active) {
+                let body = ui.available_rect_before_wrap();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| show_panel(app, ui, panel));
+            }
+        });
+    ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, t.canvas);
+    crate::canvas::show(app, ui);
+}
+
+fn show_panel(app: &mut crate::CadApp, ui: &mut egui::Ui, panel: &Panel) {
+    match panel {
+        Panel::Canvas => {
+            ui.painter().rect_filled(ui.max_rect(), 0.0, crate::theme::Tokens::get().canvas);
+            crate::canvas::show(app, ui);
+        }
+        Panel::ToolSets => crate::palettes::toolsets(app, ui),
+        Panel::QuickCalc => crate::palettes::quickcalc::show(app, ui),
+        Panel::Layers => {
+            egui::ScrollArea::vertical().id_salt("dock-layers").auto_shrink([false, false]).show(ui, |ui| crate::palettes::layers_section(app, ui));
+        }
+        Panel::Properties => {
+            egui::ScrollArea::vertical().id_salt("dock-properties").auto_shrink([false, false]).show(ui, |ui| {
+                crate::shortcut_menus::palette(app, ui, crate::palettes::properties_section, crate::shortcut_menus::properties_entries)
+            });
+        }
+        Panel::ExternalRefs => {
+            egui::ScrollArea::both().id_salt("dock-xrefs").auto_shrink([false, false]).show(ui, |ui| crate::xrefs::section(app, ui));
+        }
+    }
+}
+
 pub fn show(app: &mut crate::CadApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get();
     let mut workspace = app.ui.docking.clone();
@@ -244,28 +343,7 @@ pub fn show(app: &mut crate::CadApp, ui: &mut egui::Ui) {
         |panel| crate::i18n::t(panel.label()).into(),
         permissions,
         panel_limits,
-        |ui, panel| match panel {
-            Panel::Canvas => {
-                ui.painter().rect_filled(ui.max_rect(), 0.0, t.canvas);
-                crate::canvas::show(app, ui);
-            }
-            Panel::ToolSets => crate::palettes::toolsets(app, ui),
-            Panel::QuickCalc => crate::palettes::quickcalc::show(app, ui),
-            Panel::Layers => {
-                egui::ScrollArea::vertical()
-                    .id_salt("dock-layers")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| crate::palettes::layers_section(app, ui));
-            }
-            Panel::Properties => {
-                egui::ScrollArea::vertical().id_salt("dock-properties").auto_shrink([false, false]).show(ui, |ui| {
-                    crate::shortcut_menus::palette(app, ui, crate::palettes::properties_section, crate::shortcut_menus::properties_entries)
-                });
-            }
-            Panel::ExternalRefs => {
-                egui::ScrollArea::both().id_salt("dock-xrefs").auto_shrink([false, false]).show(ui, |ui| crate::xrefs::section(app, ui));
-            }
-        },
+        |ui, panel| show_panel(app, ui, panel),
     );
     // Existing panel close buttons and commands still own their visibility switches.
     let rendered = workspace;

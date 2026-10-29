@@ -1344,3 +1344,8 @@
 	US Survey Inch	美国测量英寸
 	US Survey Yard	美国测量码
 	US Survey Mile	美国测量英里
+	Web panel	网页
+	Collapse web panel	收起网页
+	Configure webviewUrl in project-config.json, then click Reload.	请在 project-config.json 中配置 webviewUrl，然后点击重新加载。
+	Web panel unavailable. Check WebView2 Runtime and click Reload.	网页区域不可用，请检查 WebView2 运行时后点击重新加载。
+	Web panel unavailable. See the error below, then click Reload.	网页区域不可用，请查看下方错误后点击重新加载。

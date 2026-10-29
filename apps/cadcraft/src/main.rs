@@ -4,7 +4,9 @@
 //!
 //! `--control <port>` (or `CADCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server:
 //! `{"id":1,"method":"cmdline.input","params":{"text":"circle 0,0 5"}}` → `{"id":1,"ok":true,…}`.
-//! See `cadcraft_ui_egui::control` for the methods.
+//! See `cadcraft_ui_egui::control` for the methods. A packaged build with neither opens the port
+//! from `controlPort` in `project-config.json` (next to the executable), so the MCP bridge can
+//! drive the app without launch flags; see [`project_webview::configured_control_port`].
 //!
 //! `CADCRAFT_VSYNC=1` presents with vsync on Linux/BSD, where the default is the low-latency
 //! present mode (`CADCRAFT_VSYNC=0` selects that elsewhere); see `cadcraft_ui_egui::gpu::surface_config`.
@@ -21,6 +23,7 @@ mod graphics;
 mod logging;
 #[cfg(target_os = "macos")]
 mod native_menu;
+mod project_webview;
 mod spacemouse;
 mod system_animations;
 mod workspace;
@@ -29,6 +32,7 @@ use cadcraft_engine::Session;
 use cadcraft_ui_egui::{CadApp, Services, i18n};
 
 struct App {
+    webview: project_webview::Host,
     cad: CadApp,
     spacemouse: spacemouse::SpaceMouse,
     /// The desktop's light/dark choice where winit reports none (Linux, the BSDs).
@@ -88,8 +92,9 @@ impl eframe::App for App {
         self.cad.raw_input_hook(raw);
         cadcraft_ui_egui::cmdline::capture_tab(ctx, raw);
     }
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.cad.ui(ui);
+        cadcraft_ui_egui::i18n::with_language(self.cad.language(), || self.webview.update(&mut self.cad.webview, ui.ctx(), frame));
         self.persist_workspace(false);
     }
     /// A normal exit: the workspace is saved, and this run's autosave files are not needed (a
@@ -252,6 +257,15 @@ fn main() -> eframe::Result {
             _ => files.push(a),
         }
     }
+    // Packaged builds open the control channel themselves: with neither --control nor
+    // CADCRAFT_CONTROL_PORT given, controlPort in project-config.json (shipped next to the
+    // executable) applies, so the MCP bridge reaches the app out of the box.
+    if control_port.is_none() {
+        control_port = project_webview::configured_control_port();
+        if let Some(port) = control_port {
+            log::info!("project-config.json: control channel on 127.0.0.1:{port}");
+        }
+    }
     // The log file lives under the settings directory; opened after the arguments, so `--version`
     // leaves no file behind. Records logged until now are written to it first.
     if let Some(logger) = logger {
@@ -316,6 +330,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let mut app = CadApp::new(Session::empty(), services());
+            app.webview.enabled = true;
             let (workspace, restored, workspace_error) = workspace::Workspace::load();
             if let Some(ui) = restored {
                 app.ui = ui;
@@ -373,6 +388,7 @@ fn main() -> eframe::Result {
             let ctx = cc.egui_ctx.clone();
             let system_animations = system_animations::SystemAnimations::start(move || ctx.request_repaint());
             Ok(Box::new(App {
+                webview: project_webview::Host::default(),
                 desktop_theme,
                 system_animations,
                 cad: app,

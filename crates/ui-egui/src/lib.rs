@@ -49,6 +49,7 @@ pub mod viewcube;
 pub mod vpscale;
 
 pub mod exchange;
+pub mod webview;
 
 use std::sync::mpsc::Receiver;
 
@@ -202,6 +203,8 @@ pub struct Services {
 }
 
 pub struct CadApp {
+    /// Host-owned browser state. Disabled in hosts without an embedded browser.
+    pub webview: webview::State,
     pub system_languages: Vec<String>,
     /// Whether the operating system shows animations, as the host reads it; `None` when the OS
     /// states nothing or the host cannot ask ([`animation`]).
@@ -263,6 +266,7 @@ pub struct CadApp {
 impl CadApp {
     pub fn new(session: Session, services: Services) -> Self {
         CadApp {
+            webview: webview::State::default(),
             system_languages: Vec::new(),
             system_animations: None,
             session,
@@ -652,19 +656,24 @@ impl CadApp {
         if self.ui.in_window_menu {
             menus::menu_bar(self, ui);
         }
-        if self.ui.show_status_bar {
+        if self.ui.show_status_bar && !self.webview.enabled {
             chrome::status_bar(self, ui);
         }
         if self.ui.show_file_tabs {
             chrome::file_tabs(self, ui);
         }
+        self.webview.show(ui);
         let has_doc = !self.session.docs.is_empty() && !self.ui.start_tab;
-        if has_doc && !self.ui.show_toolsets {
+        if has_doc && !self.ui.show_toolsets && !self.webview.enabled {
             palettes::toolsets_strip(self, ui);
         }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
             if has_doc {
-                docking::show(self, ui);
+                if self.webview.enabled {
+                    docking::show_project(self, ui);
+                } else {
+                    docking::show(self, ui);
+                }
             } else {
                 chrome::start_page(self, ui);
             }

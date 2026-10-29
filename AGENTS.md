@@ -66,3 +66,19 @@ People trust CADCraft with their drawings; a crash loses their work. **This outr
   GitHub profiles). Never hand-edit `contributors.json`.
 - Maintainers refresh the stats with `python3 ../../craftrules/scripts/contributors.py .` (it also
   re-verifies who wrote each `people.toml` entry; `--check` only verifies).
+
+## Project-level change records
+
+This repository is used as the CADCraft source workspace inside the outer `cadcraftPro` project.
+Every change made under this repository—including source, configuration, dependencies, build and
+packaging files, assets, tests, and documentation—must have a synchronized Markdown record in the
+outer project at `../docs/change/cadcraft/`.
+
+- Use one record per independent change, named `short-topic-YYYY-MM-DD-.md`.
+- Record the CADCraft baseline (branch, tag, or commit), changed files, reason, behavior and
+  compatibility impact, validation performed, known limitations, and upgrade or backport notes.
+- Create or update the record as part of the same work as the source change; a CADCraft change
+  without a corresponding record is incomplete.
+- Before an upstream upgrade, review the records for the current baseline. After the upgrade,
+  update or add a record with the upstream revision, conflict resolutions, validation, and any
+  remaining manual follow-up.
