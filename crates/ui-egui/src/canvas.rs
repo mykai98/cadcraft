@@ -2020,6 +2020,7 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
         draw_viewcube(app, ui, rect);
     }
     viewport_label(&painter, rect);
+    coordinate_readout(app, &painter, rect);
     // Typing and Escape reach the command line even when its overlay is hidden.
     crate::cmdline::keyboard(app, ui.ctx());
     // Command line overlay.
@@ -2576,6 +2577,13 @@ fn draw_ucs_icon(p: &egui::Painter, rect: Rect) {
     let f = egui::FontId::proportional(13.0);
     p.text(o + vec2(70.0, 0.0), egui::Align2::LEFT_CENTER, crate::tl!("X"), f.clone(), t.canvas_ink);
     p.text(o + vec2(0.0, -70.0), egui::Align2::CENTER_BOTTOM, crate::tl!("Y"), f, t.canvas_ink);
+}
+
+/// The cursor coordinates at the bottom-right corner of the drawing area.
+fn coordinate_readout(app: &CadApp, p: &egui::Painter, rect: Rect) {
+    let Some(text) = crate::chrome::cursor_readout(app) else { return };
+    let t = Tokens::get();
+    p.text(pos2(rect.right() - 10.0, rect.bottom() - 8.0), egui::Align2::RIGHT_BOTTOM, text, crate::theme::small(), t.canvas_ink);
 }
 
 fn viewport_label(p: &egui::Painter, rect: Rect) {

@@ -49,8 +49,8 @@ impl Default for Limits {
 }
 
 /// Start the loopback server with a fresh session token and a bounded request queue.
-/// Binding or token-issuance failure returns a disconnected receiver.
-pub fn start(port: u16, ctx: egui::Context) -> Receiver<ControlRequest> {
+/// Binding or token-issuance failure is returned to the desktop for a visible status message.
+pub fn start(port: u16, ctx: egui::Context) -> Result<Receiver<ControlRequest>, String> {
     match TcpListener::bind(("127.0.0.1", port)) {
         Ok(l) => {
             // Loopback TCP cannot tell local users apart, so issue an unguessable per-session
@@ -60,18 +60,20 @@ pub fn start(port: u16, ctx: egui::Context) -> Receiver<ControlRequest> {
             let token = match cadcraft_mcp::control_token::issue(port) {
                 Ok(t) => Arc::new(t),
                 Err(e) => {
-                    log::error!("control server not started: could not write the control token: {e}");
-                    return sync_channel::<ControlRequest>(0).1;
+                    let error = format!("control server not started: could not write the control token: {e}");
+                    log::error!("{error}");
+                    return Err(error);
                 }
             };
             if let Ok(path) = cadcraft_mcp::control_token::token_path(port) {
                 log::info!("control server listening on 127.0.0.1:{port} (token in {})", path.display());
             }
-            serve_listener(l, Limits::default(), ctx, token)
+            Ok(serve_listener(l, Limits::default(), ctx, token))
         }
         Err(e) => {
-            log::error!("control server failed to bind 127.0.0.1:{port}: {e}");
-            sync_channel::<ControlRequest>(0).1
+            let error = format!("control server failed to bind 127.0.0.1:{port}: {e}");
+            log::error!("{error}");
+            Err(error)
         }
     }
 }
@@ -312,6 +314,15 @@ mod tests {
 
     /// A fixed token for tests; real tokens are random (see `cadcraft_mcp::control_token`).
     const TEST_TOKEN: &str = "test-control-token";
+
+    #[test]
+    fn occupied_port_returns_a_visible_startup_error() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        let error = start(port, egui::Context::default()).unwrap_err();
+        assert!(error.contains(&format!("127.0.0.1:{port}")));
+        assert!(error.contains("failed to bind"));
+    }
 
     /// The control server on a loopback port under `limits`; requests arrive on the receiver.
     fn serve_with(limits: Limits) -> (std::net::SocketAddr, Receiver<ControlRequest>) {

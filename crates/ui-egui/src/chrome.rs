@@ -278,7 +278,7 @@ fn elided(p: &egui::Painter, text: &str, font: egui::FontId, color: egui::Color3
 
 /// Widest layout tab name before it is cut with "…".
 const LAYOUT_TAB_TEXT: f32 = 150.0;
-/// Room the layout tabs leave for the coordinates and messages.
+/// Room the layout tabs leave for the transient messages.
 const STATUS_READOUT_MIN: f32 = 150.0;
 
 /// Which of the tabs with these `widths` to show in `room`: all of them when they fit, else a run
@@ -357,9 +357,22 @@ fn run_toggle(app: &mut CadApp, cmd: Option<&'static str>) {
     }
 }
 
-/// Compact status area for the project sidebar: the transient message or cursor coordinates on
-/// one line, the drafting toggles wrapped below. Runs the same commands as [`status_bar`], which
-/// it replaces while the project layout owns the chrome.
+/// The cursor coordinates as "x, y, z" in the drawing's units, for the readout at the
+/// bottom-right corner of the drawing area.
+pub fn cursor_readout(app: &CadApp) -> Option<String> {
+    let c = app.canvas.cursor?;
+    let (lu, lp) = app.session.doc().map(|d| (d.header.i64("LUNITS", 2), d.header.i64("LUPREC", 4))).unwrap_or((2, 4));
+    Some(format!(
+        "{}, {}, {}",
+        cadcraft_engine::units::format_distance(c.x, lu, lp),
+        cadcraft_engine::units::format_distance(c.y, lu, lp),
+        cadcraft_engine::units::format_distance(0.0, lu, lp)
+    ))
+}
+
+/// Compact status area for the project sidebar: the transient message on one line, the drafting
+/// toggles wrapped below. Runs the same commands as [`status_bar`], which it replaces while the
+/// project layout owns the chrome.
 pub fn sidebar_status(app: &mut CadApp, ui: &mut egui::Ui) {
     let t = Tokens::get();
     // Clear the status message on time even when no input arrives (the app only repaints on input).
@@ -370,18 +383,8 @@ pub fn sidebar_status(app: &mut CadApp, ui: &mut egui::Ui) {
         ui.ctx().request_repaint_after(left);
     }
     let message = app.status.as_ref().filter(|(_, at)| crate::now_ms() - at < 5000.0).map(|(m, _)| m.clone());
-    let coord = app.canvas.cursor.map(|c| {
-        let (lu, lp) = app.session.doc().map(|d| (d.header.i64("LUNITS", 2), d.header.i64("LUPREC", 4))).unwrap_or((2, 4));
-        format!(
-            "{}, {}, {}",
-            cadcraft_engine::units::format_distance(c.x, lu, lp),
-            cadcraft_engine::units::format_distance(c.y, lu, lp),
-            cadcraft_engine::units::format_distance(0.0, lu, lp)
-        )
-    });
-    if let Some(text) = message.clone().or(coord) {
-        let color = if message.is_some() { t.warn } else { t.text };
-        ui.add(egui::Label::new(egui::RichText::new(&text).color(color)).truncate()).on_hover_text(text);
+    if let Some(text) = message {
+        ui.add(egui::Label::new(egui::RichText::new(&text).color(t.warn)).truncate()).on_hover_text(text);
     }
     let mut toggle_cmd = None;
     ui.horizontal_wrapped(|ui| {
@@ -397,7 +400,7 @@ pub fn sidebar_status(app: &mut CadApp, ui: &mut egui::Ui) {
     run_toggle(app, toggle_cmd);
 }
 
-/// Status bar: layout tabs on the left, coordinates and drafting toggles on the right.
+/// Status bar: layout tabs on the left, transient messages and drafting toggles on the right.
 pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
     let t = Tokens::get();
     egui::Panel::bottom("cc_status").exact_size(26.0).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
@@ -432,16 +435,6 @@ pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
         let toggles = drafting_toggles(app);
         let size = 20.0;
         let mut rx = r.right() - 8.0 - toggles.len() as f32 * (size + 4.0);
-        // Coordinates.
-        let coord = app.canvas.cursor.map(|c| {
-            let (lu, lp) = app.session.doc().map(|d| (d.header.i64("LUNITS", 2), d.header.i64("LUPREC", 4))).unwrap_or((2, 4));
-            format!(
-                "{}, {}, {}",
-                cadcraft_engine::units::format_distance(c.x, lu, lp),
-                cadcraft_engine::units::format_distance(c.y, lu, lp),
-                cadcraft_engine::units::format_distance(0.0, lu, lp)
-            )
-        });
         // MODEL / PAPER (layouts only): toggles MSPACE and PSPACE like AutoCAD's status button.
         let mut coord_right = rx - 8.0;
         // The annotation scale list (model space).
@@ -554,23 +547,20 @@ pub fn status_bar(app: &mut CadApp, ui: &mut egui::Ui) {
         if let Some(n) = switch {
             let _ = app.run("layout.set", json!({ "name": n }));
         }
-        // A transient message occupies the same bounded readout slot as coordinates.
-        // Ellipsis and a tooltip keep either value readable without covering layout tabs.
+        // A transient message occupies the bounded readout slot.
+        // Ellipsis and a tooltip keep it readable without covering layout tabs.
         let message = app.status.as_ref().filter(|(_, at)| crate::now_ms() - at < 5000.0).map(|(message, _)| message);
-        let readout = message.cloned().or(coord);
-        if let Some(text) = readout {
+        if let Some(text) = message.cloned() {
             let left = x + 8.0;
             let width = (coord_right - left).max(0.0);
             if width > 4.0 {
-                let color = if message.is_some() { t.warn } else { t.text };
-                let mut job = egui::text::LayoutJob::simple_singleline(text.clone(), crate::theme::body(), color);
+                let mut job = egui::text::LayoutJob::simple_singleline(text.clone(), crate::theme::body(), t.warn);
                 job.wrap.max_width = width;
                 job.wrap.max_rows = 1;
                 job.wrap.break_anywhere = true;
                 let galley = p.layout_job(job);
                 let rect = Rect::from_min_max(pos2(left, r.top()), pos2(coord_right, r.bottom()));
-                let text_x = if message.is_some() { left } else { coord_right - galley.size().x };
-                p.with_clip_rect(rect).galley(pos2(text_x, r.center().y - galley.size().y / 2.0), galley, color);
+                p.with_clip_rect(rect).galley(pos2(left, r.center().y - galley.size().y / 2.0), galley, t.warn);
                 ui.interact(rect, ui.id().with("status_readout"), Sense::hover()).on_hover_text(text);
             }
         }

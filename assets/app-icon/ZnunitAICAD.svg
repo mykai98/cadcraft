@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>ZnunitAICAD</title>
+<desc>Original Z drafting mark and original outlined lettering. MIT OR Apache-2.0.</desc>
+<rect x="0" y="0" width="1023" height="1023" rx="214" fill="#101e36"/>
+<polyline points="256,100 256,714" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="110,256 914,256" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="512,100 512,714" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="110,512 914,512" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="768,100 768,714" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="110,768 914,768" fill="none" stroke="#1c304a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="140,320 140,140 320,140" fill="none" stroke="#304c67" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="884,564 884,744 704,744" fill="none" stroke="#304c67" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="258,207 766,207 766,307 408,552 258,552 616,307 258,307" fill="#31dfdc"/>
+<polygon points="258,207 766,207 766,307 258,307" fill="#f3f7ff"/>
+<polygon points="258,552 766,552 766,652 258,652" fill="#f3f7ff"/>
+<polyline points="114,802 186,802 114,902 186,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="203,902 203,832" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="203,850 221,832 243,832 261,850 261,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="278,832 278,885 293,902 318,902 336,885 336,832" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="336,885 336,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="353,902 353,832" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="353,850 371,832 393,832 411,850 411,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="434,840 434,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="434,807 434,810" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="477,807 477,886 491,902 505,902" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="457,835 503,835" fill="none" stroke="#f3f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="522,902 558,802 594,902" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="537,864 579,864" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="611,802 651,802" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="631,802 631,902" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="611,902 651,902" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="736,814 718,802 688,802 668,822 668,882 688,902 718,902 736,890" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="753,902 789,802 825,902" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="768,864 810,864" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="842,902 842,802 882,802 910,826 910,878 882,902 842,902" fill="none" stroke="#31dfdc" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

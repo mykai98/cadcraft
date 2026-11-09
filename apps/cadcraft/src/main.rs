@@ -285,7 +285,7 @@ fn main() -> eframe::Result {
         // swapchains hold two frames back under vsync (`CADCRAFT_VSYNC=1` restores vsync).
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface),
         viewport: egui::ViewportBuilder::default()
-            .with_title("CADCraft")
+            .with_title("Znunit.AI.CAD")
             .with_inner_size([1600.0, 1000.0])
             .with_min_inner_size([900.0, 560.0])
             .with_drag_and_drop(true)
@@ -368,10 +368,17 @@ fn main() -> eframe::Result {
             if let Some(rs) = &cc.wgpu_render_state {
                 app.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }
-            if let Some(port) = control_port {
-                let rx = control_server::start(port, cc.egui_ctx.clone());
-                app = app.with_control(rx);
-            }
+            let control_error = if let Some(port) = control_port {
+                match control_server::start(port, cc.egui_ctx.clone()) {
+                    Ok(rx) => {
+                        app = app.with_control(rx);
+                        None
+                    }
+                    Err(error) => Some(error),
+                }
+            } else {
+                None
+            };
             if sample {
                 let _ = app.run("ui.sample", serde_json::json!({}));
             }
@@ -382,6 +389,10 @@ fn main() -> eframe::Result {
                 // In the units the profile asks for (MEASUREINIT, restored above).
                 let metric = app.session.settings.measureinit;
                 app.session.new_drawing(metric);
+            }
+            if let Some(error) = control_error {
+                app.session.echo(format!("MCP: {error}"));
+                app.set_status(format!("MCP: {error}"));
             }
             let ctx = cc.egui_ctx.clone();
             let desktop_theme = desktop_theme::DesktopTheme::start(move || ctx.request_repaint());

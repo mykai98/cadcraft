@@ -17,8 +17,8 @@ const TOKEN_BYTES: usize = 32;
 /// The file holding the control token for `port`, inside a per-user private directory.
 ///
 /// On Unix the runtime dir (`XDG_RUNTIME_DIR`, already `0700` and per-user) is preferred, else the
-/// user's home; on Windows the local app-data directory. The file itself is created with
-/// owner-only permissions regardless.
+/// user's home; on Windows an explicitly provisioned package directory or local app-data.
+/// Unix files use owner-only permissions; Windows relies on the private directory's ACL.
 pub fn token_path(port: u16) -> io::Result<PathBuf> {
     Ok(private_dir()?.join(format!("cadcraft-control-{port}.token")))
 }
@@ -35,10 +35,47 @@ fn private_dir() -> io::Result<PathBuf> {
     Ok(std::env::temp_dir())
 }
 
-/// Require the Windows per-user local app-data directory for session token storage.
+/// Resolve the packaged private directory, falling back to Windows per-user local app-data.
 #[cfg(windows)]
 fn private_dir() -> io::Result<PathBuf> {
+    let config = std::env::current_exe()?.with_file_name("project-config.json");
+    if let Some(dir) = configured_windows_dir(&config)? {
+        return Ok(dir);
+    }
     windows_private_dir(std::env::var_os("LOCALAPPDATA"))
+}
+
+/// A packaged desktop and its sibling CLI use the same explicitly provisioned private directory.
+/// The packager must restrict its ACL to the current user and SYSTEM before starting either app.
+#[cfg(any(windows, test))]
+fn configured_windows_dir(config: &std::path::Path) -> io::Result<Option<PathBuf>> {
+    use std::io::Read;
+    let file = match std::fs::File::open(config) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(io::Error::new(e.kind(), format!("read {}: {e}", config.display()))),
+    };
+    let mut data = Vec::new();
+    file.take(64 * 1024 + 1).read_to_end(&mut data)?;
+    if data.len() > 64 * 1024 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "project-config.json exceeds 64 KiB"));
+    }
+    let value: serde_json::Value = serde_json::from_slice(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let Some(value) = value.get("controlTokenDirectory").filter(|v| !v.is_null()) else { return Ok(None) };
+    let dir = value
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "controlTokenDirectory must be a nonempty path string"))?;
+    let dir = PathBuf::from(dir);
+    let dir = if dir.is_absolute() { dir } else { config.parent().unwrap_or_else(|| std::path::Path::new(".")).join(dir) };
+    // Never silently create a directory with inherited, potentially public permissions.
+    if !dir.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("private control directory {} is missing; run the project's control setup", dir.display()),
+        ));
+    }
+    Ok(Some(dir))
 }
 
 /// Validate that Windows supplied a nonempty local app-data path instead of using a shared fallback.
@@ -61,7 +98,7 @@ fn private_dir() -> io::Result<PathBuf> {
 pub fn issue(port: u16) -> io::Result<String> {
     let token = random_hex()?;
     let path = token_path(port)?;
-    issue_at(&path, token.as_bytes())?;
+    issue_at(&path, token.as_bytes()).map_err(|e| io::Error::new(e.kind(), format!("write {}: {e}", path.display())))?;
     Ok(token)
 }
 
@@ -131,7 +168,7 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(not(unix))]
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> io::Result<()> {
     use std::io::Write;
-    // On Windows the per-user LOCALAPPDATA directory is already ACL-protected to the user.
+    // LOCALAPPDATA or the explicitly provisioned package directory is ACL-protected to the user.
     let _ = std::fs::remove_file(path);
     let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
     f.write_all(bytes)?;
@@ -179,6 +216,32 @@ mod tests {
         assert!(windows_private_dir(None).is_err());
         assert!(windows_private_dir(Some("".into())).is_err());
         assert_eq!(windows_private_dir(Some("private-app-data".into())).unwrap(), PathBuf::from("private-app-data"));
+    }
+
+    #[test]
+    fn packaged_directory_is_shared_and_requires_provisioning() {
+        let dir = std::env::temp_dir().join(format!("cadcraft-config-token-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("project-config.json");
+        assert_eq!(configured_windows_dir(&config).unwrap(), None);
+        std::fs::write(&config, br#"{"controlPort":7979}"#).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap(), None);
+        std::fs::write(&config, br#"{"controlTokenDirectory":"private"}"#).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap_err().kind(), io::ErrorKind::NotFound);
+        std::fs::create_dir_all(dir.join("private")).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap(), Some(dir.join("private")));
+        let absolute = serde_json::json!({"controlTokenDirectory": dir.join("private")});
+        std::fs::write(&config, absolute.to_string()).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap(), Some(dir.join("private")));
+        std::fs::write(&config, br#"{"controlTokenDirectory":null}"#).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap(), None);
+        for bad in [r#"{"controlTokenDirectory":""}"#, r#"{"controlTokenDirectory":42}"#, "{"] {
+            std::fs::write(&config, bad).unwrap();
+            assert_eq!(configured_windows_dir(&config).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        }
+        std::fs::write(&config, vec![b' '; 64 * 1024 + 1]).unwrap();
+        assert_eq!(configured_windows_dir(&config).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// Token issuance creates its missing directory hierarchy before writing the credential.

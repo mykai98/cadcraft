@@ -39,12 +39,25 @@ fn read_config() -> Result<Option<serde_json::Value>, String> {
     serde_json::from_slice(&data).map(Some).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Select only the WebView address. Control settings remain independent of the environment.
+fn project_url(value: &serde_json::Value) -> Result<Option<String>, String> {
+    if let Some(urls) = value.get("webviewUrls") {
+        let environment = value.get("environment").and_then(|v| v.as_str()).ok_or("environment must be dev or prod")?;
+        if !matches!(environment, "dev" | "prod") {
+            return Err("environment must be dev or prod".into());
+        }
+        let address = urls.get(environment).and_then(|v| v.as_str()).ok_or("webviewUrls requires a string for the selected environment")?;
+        return parse_url(address);
+    }
+    parse_url(value.get("webviewUrl").and_then(|v| v.as_str()).ok_or("project-config.json requires a string webviewUrl")?)
+}
+
 fn configured_url() -> Result<Option<String>, String> {
     if let Some(value) = std::env::var_os("CADCRAFT_WEBVIEW_URL") {
         return parse_url(&value.to_string_lossy());
     }
     let Some(value) = read_config()? else { return Ok(None) };
-    parse_url(value.get("webviewUrl").and_then(|v| v.as_str()).ok_or("project-config.json requires a string webviewUrl")?)
+    project_url(&value)
 }
 
 /// `controlPort` from a parsed `project-config.json`: absent or `null` leaves the channel off;
@@ -270,6 +283,43 @@ mod tests {
         {
             assert!(parse_control_port(&cfg(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn webview_environment_does_not_change_control_port() {
+        let mut config = serde_json::json!({
+            "environment": "dev",
+            "webviewUrls": {"dev": "http://127.0.0.1:5173/", "prod": "http://127.0.0.1:8000/"},
+            "controlPort": 7979
+        });
+        assert_eq!(project_url(&config).unwrap().as_deref(), Some("http://127.0.0.1:5173/"));
+        assert_eq!(parse_control_port(&config).unwrap(), Some(7979));
+        config["environment"] = "prod".into();
+        assert_eq!(project_url(&config).unwrap().as_deref(), Some("http://127.0.0.1:8000/"));
+        assert_eq!(parse_control_port(&config).unwrap(), Some(7979));
+    }
+
+    #[test]
+    fn invalid_webview_settings_leave_control_available() {
+        for fields in [
+            serde_json::json!({"environment": "unknown", "webviewUrls": {}}),
+            serde_json::json!({"webviewUrls": {"dev": "http://127.0.0.1:5173/"}}),
+            serde_json::json!({"environment": "dev", "webviewUrls": {"prod": "http://127.0.0.1:8000/"}}),
+            serde_json::json!({"environment": "dev", "webviewUrls": {"dev": 5173}}),
+            serde_json::json!({"environment": "dev", "webviewUrls": {"dev": "file:///C:/test"}}),
+        ] {
+            let mut config = fields;
+            config["controlPort"] = 7979.into();
+            assert!(project_url(&config).is_err());
+            assert_eq!(parse_control_port(&config).unwrap(), Some(7979));
+        }
+    }
+
+    #[test]
+    fn legacy_webview_url_remains_supported() {
+        let config = serde_json::json!({"environment": "dev", "webviewUrl": "https://example.com/", "controlPort": 7979});
+        assert_eq!(project_url(&config).unwrap().as_deref(), Some("https://example.com/"));
+        assert_eq!(parse_control_port(&config).unwrap(), Some(7979));
     }
 
     #[test]

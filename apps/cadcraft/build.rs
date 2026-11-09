@@ -12,11 +12,11 @@ fn main() {
     if std::path::Path::new("../../assets/app-icon/cadcraft.ico").exists() {
         res.set_icon("../../assets/app-icon/cadcraft.ico");
     }
-    res.set("ProductName", "CADCraft")
-        .set("FileDescription", "CADCraft computer-aided design")
+    res.set("ProductName", "Znunit.AI.CAD")
+        .set("FileDescription", "Znunit.AI.CAD computer-aided design")
         .set("CompanyName", "Learning Machines LLC")
         .set("LegalCopyright", "Copyright (c) 2026 ArtCraft Team and the CADCraft contributors. MIT OR Apache-2.0.")
-        .set("OriginalFilename", "cadcraft.exe")
+        .set("OriginalFilename", "Znunit.AI.CAD.exe")
         .set("InternalName", "cadcraft");
     if let Err(e) = res.compile() {
         if std::env::var_os("CADCRAFT_REQUIRE_WINRES").is_some() {
